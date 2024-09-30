@@ -7,7 +7,9 @@ from multiprocessing.pool import Pool
 from pathlib import Path
 import numpy as np
 from tensorboardX import SummaryWriter
-from gymnasium.wrappers import RecordVideo, RecordEpisodeStatistics, capped_cubic_video_schedule
+#from gymnasium.wrappers import RecordVideo, RecordEpisodeStatistics, capped_cubic_video_schedule
+from gym.wrappers.record_video import RecordVideo, capped_cubic_video_schedule
+from gym.wrappers.record_episode_statistics import RecordEpisodeStatistics
 
 import rl_agents.trainer.logger
 from rl_agents.agents.common.factory import load_environment, load_agent
@@ -18,6 +20,10 @@ from rl_agents.configuration import serialize
 from rl_agents.trainer.graphics import RewardViewer
 
 logger = logging.getLogger(__name__)
+
+
+
+from sofagym.utils import load_env
 
 
 class Evaluation(object):
@@ -89,7 +95,7 @@ class Evaluation(object):
         self.agent.set_writer(self.writer)
         self.agent.evaluation = self
         self.write_logging()
-        self.write_metadata()
+        # self.write_metadata()
         self.filtered_agent_stats = 0
         self.best_agent_stats = -np.infty, 0
 
@@ -140,7 +146,9 @@ class Evaluation(object):
         for self.episode in range(self.num_episodes):
             # Run episode
             terminal = False
-            self.reset(seed=self.episode)
+            self.reset()
+            self.wrapped_env.save_config()
+            self.wrapped_env.save_step(0)
             rewards = []
             start_time = time.time()
             while not terminal:
@@ -176,10 +184,20 @@ class Evaluation(object):
             pass
 
         # Step the environment
+        self.wrapped_env = load_env(self.wrapped_env, 0)
+        path_point = self.wrapped_env.root.Reward.path_pos[0]
+        print("DEBUG    path pos before", path_point)
         previous_observation, action = self.observation, actions[0]
         transition = self.wrapped_env.step(action)
-        self.observation, reward, done, truncated, info = transition
-        terminal = done or truncated
+        self.wrapped_env.save_step(0)
+        self.observation, reward, done, info = transition
+        terminal = done
+
+        path_point = self.wrapped_env.root.Reward.path_pos[0]
+        print("DEBUG    path pos after", path_point)
+
+        print("DEBUG    ACTION: ", actions[0])
+        print("DEBUG    REWARD:", reward)
 
         # Call callback
         if self.step_callback_fn is not None:
@@ -371,7 +389,7 @@ class Evaluation(object):
 
     def reset(self, seed=0):
         seed = self.sim_seed + seed if self.sim_seed is not None else None
-        self.observation, info = self.wrapped_env.reset()
+        self.observation = self.wrapped_env.reset()
         self.agent.seed(seed)  # Seed the agent with the main environment seed
         self.agent.reset()
 

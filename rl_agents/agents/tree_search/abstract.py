@@ -36,7 +36,7 @@ class AbstractTreeSearchAgent(AbstractAgent):
         return {
             "env_preprocessors": [],
             "display_tree": False,
-            "receding_horizon": 1,
+            "receding_horizon": 10,
             "terminal_reward": 0
         }
 
@@ -82,6 +82,7 @@ class AbstractTreeSearchAgent(AbstractAgent):
         return replanning_required
 
     def reset(self):
+        self.env.load_config(self.env.config_file)
         self.planner.step_by_reset()
         self.remaining_horizon = 0
         self.steps = 0
@@ -117,7 +118,7 @@ class AbstractPlanner(Configurable):
 
     @classmethod
     def default_config(cls):
-        return dict(budget=500,
+        return dict(budget=4,
                     gamma=0.8,
                     step_strategy="reset")
 

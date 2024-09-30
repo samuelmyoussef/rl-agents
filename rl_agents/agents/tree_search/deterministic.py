@@ -6,8 +6,11 @@ from rl_agents.agents.tree_search.abstract import Node, AbstractTreeSearchAgent,
 logger = logging.getLogger(__name__)
 
 
+from sofagym.utils import copy_env, normalize_reward, load_env
+
+
 class DeterministicNode(Node):
-    def __init__(self, parent, planner, state=None, depth=0):
+    def __init__(self, parent, planner, state=None, depth=0, node_num=0):
         super().__init__(parent, planner)
         self.state = state
         self.observation = None
@@ -17,6 +20,7 @@ class DeterministicNode(Node):
         self.value_lower = 0
         self.count = 1
         self.done = False
+        self.node_num = node_num
 
     def selection_rule(self):
         if not self.children:
@@ -36,11 +40,18 @@ class DeterministicNode(Node):
         for action in actions:
             self.children[action] = type(self)(self,
                                                self.planner,
-                                               state=safe_deepcopy_env(self.state),
-                                               depth=self.depth + 1)
-            observation, reward, done, truncated, info = self.planner.step(self.children[action].state, action)
+                                               #state=copy_env(self.state),
+                                               state=load_env(self.state, self.node_num),
+                                               depth=self.depth + 1,
+                                               node_num=self.planner.nodes_num + 1)
+            self.planner.nodes_num += 1
+            observation, reward, done, info = self.planner.step(self.children[action].state, action)
+            self.children[action].state.save_step(self.children[action].node_num)
+            # reward = normalize_reward(reward)
             self.planner.leaves.append(self.children[action])
             self.children[action].update(reward, done, observation)
+
+            # self.children[action].state.close()
 
     def update(self, reward, done, observation=None):
         if not np.all(0 <= reward) or not np.all(reward <= 1):
@@ -98,9 +109,16 @@ class OptimisticDeterministicPlanner(AbstractPlanner):
         super(OptimisticDeterministicPlanner, self).__init__(config)
         self.env = env
         self.leaves = None
+        
+        self.nodes_num = 0
 
     def reset(self):
-        self.root = self.NODE_TYPE(None, planner=self)
+        # if hasattr(self, 'leaves'):
+        #     if self.leaves is not None:
+        #         self.leaves.clear()
+        
+        self.nodes_num = 0
+        self.root = self.NODE_TYPE(None, planner=self, node_num=self.nodes_num)
         self.leaves = [self.root]
 
     def run(self):
@@ -115,6 +133,10 @@ class OptimisticDeterministicPlanner(AbstractPlanner):
 
     def plan(self, state, observation):
         self.root.state = state
+        # self.root.state.reset()
+        self.root.state.load_config(self.root.state.config_file)
+        self.root.state = load_env(self.root.state, self.nodes_num)
+        # self.root.state.save_step(self.nodes_num)
         for epoch in np.arange(self.config["budget"] // state.action_space.n):
             logger.debug("Expansion {}/{}".format(epoch + 1, self.config["budget"] // state.action_space.n))
             self.run()
